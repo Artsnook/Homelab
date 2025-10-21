@@ -41,20 +41,17 @@ do
     esac
 done
 
-# Determine stack directory
+# --- Require stack directory ---
 if [ -z "$STACK_DIR" ]; then
-    echo "⚠️  No stack specified. Using current directory as stack."
-    STACK_DIR="${PWD##*/}"
-    STACK_PATH="$PWD"
-else
-    echo "📦 Backing up stack: $STACK_DIR"
-    STACK_PATH="$STACK_DIR"
+    echo "❌ No stack specified. Use -s [stack_directory]. Aborting."
+    exit 1
 fi
 
-# Change to stack directory if needed
-if [ "$STACK_PATH" != "$PWD" ]; then
-    cd "$STACK_PATH" || { echo "❌ Failed to enter stack directory: $STACK_PATH"; exit 1; }
-fi
+STACK_PATH="$STACK_DIR"
+echo "📦 Backing up stack: $STACK_DIR"
+
+# Change to stack directory
+cd "$STACK_PATH" || { echo "❌ Failed to enter stack directory: $STACK_PATH"; exit 1; }
 
 # --- Check if the stack is currently running ---
 echo "🔎 Checking if Docker Compose stack is running..."
@@ -66,7 +63,7 @@ else
     echo "⚠️  Stack is not running. Will not start after backup."
 fi
 
-# Stop Docker Compose stack (only if any containers exist)
+# Stop Docker Compose stack
 echo "⏹️  Stopping Docker Compose stack..."
 $COMPOSE_CMD down
 
@@ -88,14 +85,10 @@ fi
 # --- Cleanup old backups ---
 echo "🧹 Enforcing maximum of $MAX_BACKUPS backups..."
 
-# Find all backups for this stack, newest first, safely handle spaces
 BACKUP_FILES=$(find "$BACKUP_PATH" -maxdepth 1 -type f -name "${STACK_DIR}-*.tar.gz" -printf "%T@ %p\n" | sort -n -r | awk '{print substr($0, index($0,$2))}')
-
-# Convert to an array-like list
 BACKUP_ARRAY=$(printf "%s\n" "$BACKUP_FILES")
-
-# Count backups
 BACKUP_COUNT=$(echo "$BACKUP_ARRAY" | wc -l)
+
 echo "📊 Found $BACKUP_COUNT backup(s) for stack: $STACK_DIR"
 
 if [ "$BACKUP_COUNT" -le "$MAX_BACKUPS" ] || [ -z "$BACKUP_ARRAY" ]; then
@@ -104,7 +97,6 @@ else
     TO_DELETE=$((BACKUP_COUNT - MAX_BACKUPS))
     echo "🗑️  Deleting $TO_DELETE old backup(s)..."
 
-    # Use a safe loop to delete old backups
     i=0
     printf "%s\n" "$BACKUP_ARRAY" | tac | while IFS= read -r OLD_BACKUP; do
         i=$((i+1))
