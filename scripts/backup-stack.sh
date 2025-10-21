@@ -41,9 +41,6 @@ do
     esac
 done
 
-# Determine backup filename
-BACKUP_FILENAME="${BACKUP_PATH}/${STACK_DIR}-${BACKUP_TIMESTAMP}.tar.gz"
-
 # Determine stack directory
 if [ -z "$STACK_DIR" ]; then
     echo "⚠️  No stack specified. Using current directory as stack."
@@ -59,9 +56,22 @@ if [ "$STACK_PATH" != "$PWD" ]; then
     cd "$STACK_PATH" || { echo "❌ Failed to enter stack directory: $STACK_PATH"; exit 1; }
 fi
 
-# Stop Docker Compose stack
+# --- Check if the stack is currently running ---
+echo "🔎 Checking if Docker Compose stack is running..."
+if $COMPOSE_CMD ps -q | grep -q .; then
+    STACK_RUNNING=true
+    echo "✅ Stack is running. Will restart after backup."
+else
+    STACK_RUNNING=false
+    echo "⚠️  Stack is not running. Will not start after backup."
+fi
+
+# Stop Docker Compose stack (only if any containers exist)
 echo "⏹️  Stopping Docker Compose stack..."
 $COMPOSE_CMD down
+
+# --- Determine backup filename ---
+BACKUP_FILENAME="${BACKUP_PATH}/${STACK_DIR}-${BACKUP_TIMESTAMP}.tar.gz"
 
 # Create backup archive
 echo "💾 Creating backup: $BACKUP_FILENAME"
@@ -69,9 +79,11 @@ echo "💾 Creating backup: $BACKUP_FILENAME"
 # tar --exclude='./deps' --exclude='*.log' --exclude='*.db' --exclude='.HA_VERSION' -zcvf "$BACKUP_FILENAME" .
 tar -zcvf "$BACKUP_FILENAME" .
 
-# Start Docker Compose stack
-echo "🚀 Starting Docker Compose stack..."
-$COMPOSE_CMD up -d
+# --- Restart stack only if it was running ---
+if [ "$STACK_RUNNING" = true ]; then
+    echo "🚀 Starting Docker Compose stack..."
+    $COMPOSE_CMD up -d
+fi
 
 # --- Cleanup old backups ---
 echo "🧹 Enforcing maximum of $MAX_BACKUPS backups..."
